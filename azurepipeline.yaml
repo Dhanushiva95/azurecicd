@@ -1,0 +1,72 @@
+# Docker
+# Build and push an image to Azure Container Registry
+# https://docs.microsoft.com/azure/devops/pipelines/languages/docker
+
+trigger:
+ paths:
+  include:
+   - vote/*
+
+
+resources:
+- repo: self
+
+variables:
+  # Container registry service connection established during pipeline creation
+  dockerRegistryServiceConnection: 'df23472a-be9b-4a46-aa8b-11de7b2b4d93'
+  imageRepository: 'vote'
+  containerRegistry: 'conregd.azurecr.io'
+  dockerfilePath: '$(Build.SourcesDirectory)/result/Dockerfile'
+  tag: '$(Build.BuildId)'
+  AZURE_DEVOPS_PAT: <pat>
+pool:
+ name: "azureage"
+
+stages:
+- stage: Build
+  displayName: Build
+  jobs:
+  - job: Build
+    displayName: Build
+    steps:
+    - task: Docker@2
+      displayName: Build
+      inputs:
+        containerRegistry: '$(dockerRegistryServiceConnection)'
+        repository: '$(imageRepository)'
+        command: 'build'
+        Dockerfile: '**/Dockerfile'
+        tags: '$(tag)'
+- stage: push
+  displayName: Push
+  jobs:
+  - job: Push
+    displayName: Push the image to registry
+    steps:
+    - task: Docker@2
+      displayName: Build and push an image to container registry
+      inputs:
+        containerRegistry: '$(dockerRegistryServiceConnection)'
+        repository: '$(imageRepository)'
+        command: 'push'
+        tags: '$(tag)'
+- stage: Update
+  displayName: Update
+  jobs:
+  - job: Update
+    displayName: Update
+    steps:
+    - checkout: self
+      persistCredentials: true
+      clean: true
+
+    - script: |
+        sudo apt-get update
+        sudo apt-get install dos2unix -y
+        dos2unix scripts/updatk8smanifests.sh
+      displayName: "Install pkgs and fix line endings"
+
+    - task: ShellScript@2
+      inputs:
+        scriptPath: "scripts/updatk8smanifests.sh"
+        args: "vote $(imageRepository) $(tag)"
